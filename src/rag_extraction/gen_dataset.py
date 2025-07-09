@@ -5,6 +5,7 @@ import re
 import shutil
 import gc
 from tqdm import tqdm
+import sys
 
 from replace_identifier import *
 
@@ -23,12 +24,16 @@ def process_thy(thy):
     if lemmas is None:
         return []
 
+    #print("lemmas: ", len(lemmas))
+    #total = 0
     for lemma in lemmas:
         # initialize lemma-level variables
         proof_state = lemma.get("proof_state")
         proof = lemma.get("proof")
 
+        #total = total + len(proof)
         for index in range(1, len(proof)):
+            print(".", end="", flush=True)
             state = proof_state[index-1]
             step = proof[index]
 
@@ -36,14 +41,16 @@ def process_thy(thy):
             replacer.add_terms(step)
 
             new_state = replacer.replace(state)
-            new_state = replacer.replace(step)
+            new_step = replacer.replace(step)
 
-            new_state = replacer.replace_loc_vars(state)
-            new_step = replacer.replace_loc_vars(step)
+            # new_state = replacer.replace_loc_vars(state)
+            # new_step = replacer.replace_loc_vars(step)
 
             processed.append({
                 "state" : new_state,
-                "step" : new_step
+                "step" : new_step,
+                "original_state" : state,
+                "original_step" : step
             })
 
         # # initialize proof state and step arrays for this lemma.
@@ -93,26 +100,50 @@ def process_thy(thy):
         #         "state" : state_string,
         #         "step" : step_string
         #     })
+    #print("This total: ", total)
     gc.collect()
 
     return processed
     
-def process_dataset():
+def process_dataset(begin, end):
     with open('sel4_thy_info.json', 'r') as f:
         original_dataset = json.load(f)
 
     processed_dataset = []
 
-    for name, theory in tqdm(original_dataset.items()):
-        theory_states_steps = process_thy(theory)
-        for pair in theory_states_steps:
-            processed_dataset.append(pair)
-        # print("Processed " + name)
+    #for name, theory in original_dataset.items():
+    index = 0
+    for name, theory in tqdm(original_dataset.items()):    
+        if (index >= begin and index < end):
+            theory_states_steps = process_thy(theory)
+            for pair in theory_states_steps:
+                processed_dataset.append(pair)
+
+            #print("Processed " + name)
+        index += 1
     
     return processed_dataset
 
 if __name__ == '__main__':
-    data = process_dataset()
-    
-    with open('dataset_rag_lemmas.json', 'w') as f:
-        f = json.dump(data)
+    begin = int(sys.argv[1:][0])
+    end = int(sys.argv[1:][1])
+
+    data = process_dataset(begin, end)
+
+    fname = 'dataset_rag_lemmas_['+str(begin)+', '+str(end)+').json'
+    with open(fname, 'w') as f:
+        f.write(json.dumps(data, indent=2))
+    # if not os.path.isfile(fname):
+    #     with open(fname, 'w') as f:
+    #         f.write(json.dumps(data, indent=2))
+    # else:
+    #     with open(fname) as feedsjson:
+    #         feeds = json.load(feedsjson)
+
+    #     feeds.append(data)
+    #     with open(fname, mode='w') as f:
+    #         f.write(json.dumps(feeds, indent=2))
+
+
+    #with open('dataset_rag_lemmas.json', 'w') as f:
+    #    f = json.dump(data, f)
