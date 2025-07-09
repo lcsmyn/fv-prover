@@ -6,7 +6,7 @@ import shutil
 import gc
 from tqdm import tqdm
 
-from rag_extraction.replace_identifier import *
+from replace_identifier import *
 
 def process_thy(thy):
     '''returns list of dictionaries containing processed
@@ -20,12 +20,15 @@ def process_thy(thy):
     # get identifiers of individual lemmas, replace local variables, replace
     # imported terms, concatenate processed lemmas to re-form original,
     # add processed state-step pairs to processed
+    if lemmas is None:
+        return []
+
     for lemma in lemmas:
         # initialize lemma-level variables
         proof_state = lemma.get("proof_state")
         proof = lemma.get("proof")
 
-        for index in range(1, proof.len()):
+        for index in range(1, len(proof)):
             state = proof_state[index-1]
             step = proof[index]
 
@@ -90,6 +93,26 @@ def process_thy(thy):
         #         "state" : state_string,
         #         "step" : step_string
         #     })
-    
+    gc.collect()
+
     return processed
     
+def process_dataset():
+    with open('sel4_thy_info.json', 'r') as f:
+        original_dataset = json.load(f)
+
+    processed_dataset = []
+
+    for name, theory in tqdm(original_dataset.items()):
+        theory_states_steps = process_thy(theory)
+        for pair in theory_states_steps:
+            processed_dataset.append(pair)
+        # print("Processed " + name)
+    
+    return processed_dataset
+
+if __name__ == '__main__':
+    data = process_dataset()
+    
+    with open('dataset_rag_lemmas.json', 'w') as f:
+        f = json.dump(data)

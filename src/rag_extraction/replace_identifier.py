@@ -5,15 +5,14 @@ import re
 import shutil
 import gc
 from tqdm import tqdm
-from src.rag_extraction.isabelle_keywords import keyword_list
-from src.rag_extraction.define import define
+from isabelle_keywords import keywords
 
 # handle fact info in the proof state later
 class ThyIdReplacer():
     long_id_pattern = re.compile(r'[a-zA-Z][a-zA-Z0-9_\']{4,}')
     loc_var_pattern = re.compile(r'[a-zA-Z][a-zA-Z0-9_\']{0,3}')
-    proof_state_pattern = re.compile(r'(?<=[0-9]+\.).*(?=[0-9]+\.)', re.DOTALL)
-    isabelle_keywords = keyword_list
+    proof_state_pattern = re.compile(r'(?<=[0-9]\.).*(?=[0-9]+\.)', re.DOTALL)
+    isabelle_keywords = keywords
     global_dict = {}
     
     def __init__(self, import_dict):
@@ -28,7 +27,7 @@ class ThyIdReplacer():
                 compiled = re.compile(exact_term)
 
                 if compiled not in ThyIdReplacer.global_dict:
-                    term_def = define(compiled)
+                    term_def = "<|long_id|>"
                     ThyIdReplacer.global_dict[compiled] = term_def
                     self.import_dict[compiled] = term_def
                 elif compiled not in self.import_dict:
