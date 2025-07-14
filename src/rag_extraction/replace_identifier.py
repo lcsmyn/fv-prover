@@ -15,10 +15,15 @@ class ThyIdReplacer():
     loc_var_pattern = re.compile(r'[a-zA-Z][a-zA-Z0-9_\']{0,2}')
     proof_state_pattern = re.compile(r'(?:[0-9]\.|this:).*(?=[0-9]+\.|$)', re.DOTALL)
     isabelle_keywords = keywords
+    full_thy_info = {}
     global_dict = {}
     
-    def __init__(self, import_dict):
+    def __init__(self, import_dict, thy_name):
         self.import_dict = import_dict
+        self.thy_name = thy_name
+
+    def set_thy_info(info):
+        ThyIdReplacer.full_thy_info = info
 
     def add_terms(self, string):
         term_matches = re.finditer(ThyIdReplacer.long_id_pattern, string)
@@ -54,10 +59,14 @@ class ThyIdReplacer():
 
         return return_string
     
+    # def define(self, pattern):
+        
+
     # def replace_loc_vars(self, string):
     #     return_string = str(string)
     #     return_string = re.sub(ThyIdReplacer.loc_var_pattern, '<|local|>', string)
     #     return return_string
+
 
 
     

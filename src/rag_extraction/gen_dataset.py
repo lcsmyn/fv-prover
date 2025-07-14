@@ -13,10 +13,12 @@ def process_thy(thy):
     '''returns list of dictionaries containing processed
     proof steps and proof states in the theory'''
     # initialize theory-level variables
-    lemmas = thy.get("lemmas")
+    thy_name = thy[0]
+    thy_info = thy[1]
+    lemmas = thy_info.get("lemmas")
     processed = []
     # initialize the replacer here for best efficiency?
-    replacer = ThyIdReplacer({})
+    replacer = ThyIdReplacer({}, thy_name)
 
     # get identifiers of individual lemmas, replace local variables, replace
     # imported terms, concatenate processed lemmas to re-form original,
@@ -109,11 +111,13 @@ def process_dataset(begin, end):
     with open('sel4_thy_info.json', 'r') as f:
         original_dataset = json.load(f)
 
+
+
     processed_dataset = []
 
     #for name, theory in original_dataset.items():
     index = 0
-    for name, theory in tqdm(original_dataset.items()):    
+    for theory in tqdm(original_dataset.items()):    
         if (index >= begin and index < end):
             theory_states_steps = process_thy(theory)
             for pair in theory_states_steps:

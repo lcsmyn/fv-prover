@@ -4,11 +4,15 @@ import json
 import random
 import torch
 import openai
+from common import *
+from lean_dojo import Pos
 from loguru import logger
 from torchmetrics import Metric
 from abc import ABC, abstractmethod
 from typing import List, Dict, Any, Optional, Tuple
-from transformers import  AutoTokenizer, AutoModelForCausalLM, GPTNeoXPreTrainedModel, GPTNeoXTokenizerFast
+from transformers import  AutoModelForSeq2SeqLM, AutoModelForCausalLM, AutoTokenizer, AutoModelForCausalLM, GPTNeoXPreTrainedModel, GPTNeoXTokenizerFast
+from retrieval.model import PremiseRetriever
+from common import remove_marks, zip_strict, format_augmented_state
 
 def zip_strict(*args):
     assert len(args) > 1 and all(len(args[0]) == len(a) for a in args[1:])
@@ -76,6 +80,135 @@ class TacticGenerator(ABC):
     ) -> List[List[Tuple[str, float]]]:
         raise NotImplementedError
 
+class HuggingFaceGenerator(TacticGenerator):
+    def __init__(
+        self,
+        model_path: str,
+        device,
+        max_inp_seq_len: int,
+        max_oup_seq_len: int,
+        length_penalty: float,
+        template: str = "%s",
+    ):
+        self.model_path = model_path
+        self.device = device
+        self.max_inp_seq_len = max_inp_seq_len
+        self.max_oup_seq_len = max_oup_seq_len
+        self.length_penalty = length_penalty
+        self.template = template
+
+    def initialize(self) -> None:
+        try:
+            self.generator = AutoModelForSeq2SeqLM.from_pretrained(self.model_path)
+            self.decoder_only = False
+        except ValueError:
+            self.generator = AutoModelForCausalLM.from_pretrained(self.model_path)
+            self.decoder_only = True
+        self.generator = self.generator.to(self.device).eval()
+        self.tokenizer = AutoTokenizer.from_pretrained(self.model_path)
+
+    async def generate(
+        self,
+        state: str,
+        file_path: str,
+        theorem_full_name: str,
+        theorem_pos: Pos,
+        num_samples: int,
+    ) -> List[Tuple[str, float]]:
+        state = self.template % state
+        logger.debug(state)
+        tokenized_state = self.tokenizer(
+            state, max_length=self.max_inp_seq_len, truncation=True, return_tensors="pt"
+        )
+        state_ids = tokenized_state.input_ids.to(self.device)
+        state_mask = tokenized_state.attention_mask.to(self.device)
+
+        # Generate tactic candidates using beam search.
+        output = self.generator.generate(
+            input_ids=state_ids,
+            attention_mask=state_mask,
+            max_length=self.max_oup_seq_len,
+            num_beams=num_samples,
+            length_penalty=self.length_penalty,
+            do_sample=False,
+            num_return_sequences=num_samples,
+            early_stopping=False,
+            output_scores=True,
+            return_dict_in_generate=True,
+        )
+
+        # Return the output.
+        raw_output_text = self.tokenizer.batch_decode(
+            output.sequences, skip_special_tokens=True
+        )
+        raw_scores = output.sequences_scores.tolist()
+
+        output_text = []
+        output_score = []
+
+        for j in range(num_samples):
+            t = remove_marks(raw_output_text[j])
+            if self.decoder_only and t.startswith(state):
+                t = t[len(state) :]
+            if t not in output_text:
+                output_text.append(t)
+                output_score.append(raw_scores[j])
+
+        return list(zip_strict(output_text, output_score))
+
+class RetrievalAugmentedGenerator(TacticGenerator):
+
+    def __init__(
+        self,
+        gen_path: str,
+        ret_path: str,
+        indexed_corpus_path: str,
+        device,
+        max_inp_seq_len: int,
+        max_oup_seq_len: int,
+        length_penalty: float,
+        max_num_retrieved: int,
+    ) -> None:
+        self.gen_path = gen_path
+        self.ret_path = ret_path
+        self.indexed_corpus_path = indexed_corpus_path
+        self.device = device
+        self.max_inp_seq_len = max_inp_seq_len
+        self.max_oup_seq_len = max_oup_seq_len
+        self.length_penalty = length_penalty
+        self.max_num_retrieved = max_num_retrieved
+        self.hf_gen = HuggingFaceGenerator(
+            gen_path, device, max_inp_seq_len, max_oup_seq_len, length_penalty
+        )
+
+    def initialize(self) -> None:
+        self.hf_gen.initialize()
+        self.retriever = PremiseRetriever.load_hf(
+            self.ret_path, self.max_inp_seq_len, self.device
+        )
+        self.retriever.load_corpus(self.indexed_corpus_path)
+
+    async def generate(
+        self,
+        state: str,
+        file_path: str,
+        theorem_full_name: str,
+        theorem_pos: Pos,
+        num_samples: int,
+    ) -> List[Tuple[str, float]]:
+        retrieved_premises, _ = self.retriever.retrieve(
+            state,
+            file_path,
+            theorem_full_name,
+            theorem_pos,
+            self.max_num_retrieved,
+        )
+        aug_state = format_augmented_state(
+            state, retrieved_premises, self.max_inp_seq_len
+        )
+        return await self.hf_gen.generate(
+            aug_state, file_path, theorem_full_name, theorem_pos, num_samples
+        )
 
 class DecoderOnlyTacticGenerator(TacticGenerator):
     def __init__(
