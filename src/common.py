@@ -55,6 +55,14 @@ class Context:
         """Serialize the context into a string for Transformers."""
         return self.state
 
+@dataclass(unsafe_hash=True)
+class Step:
+    path: str
+    code: str
+
+    def __post_init__(self) -> None:
+        assert isinstance(self.path, str)
+        assert isinstance(self.code, str) and self.code != ""
 
 @dataclass(unsafe_hash=True)
 class Premise:

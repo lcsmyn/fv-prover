@@ -390,6 +390,11 @@ keywords = [
     "refute",
     "refute_params",
 
+    # Hacks
+    "goal",
+    "subgoal",
+    "subgoals"
+
     # Text from escape sequences (\<...>)
     # "and",
     # "or",

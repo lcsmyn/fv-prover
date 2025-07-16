@@ -5,9 +5,13 @@ import re
 import shutil
 import gc
 from tqdm import tqdm
+from copy import deepcopy
 import sys
 
 from replace_identifier import *
+
+# TODO: add negative examples (based on dependency graph distance) and
+# create train/val splits.
 
 def process_thy(thy):
     '''returns list of dictionaries containing processed
@@ -16,7 +20,8 @@ def process_thy(thy):
     thy_name = thy[0]
     thy_info = thy[1]
     lemmas = thy_info.get("lemmas")
-    processed = []
+    processed_train = []
+    processed_val = []
     # initialize the replacer here for best efficiency?
     replacer = ThyIdReplacer({}, thy_name)
 
@@ -24,11 +29,12 @@ def process_thy(thy):
     # imported terms, concatenate processed lemmas to re-form original,
     # add processed state-step pairs to processed
     if lemmas is None:
-        return []
+        pass
 
     #print("lemmas: ", len(lemmas))
     #total = 0
-    for lemma in lemmas:
+    for index in len(lemmas):
+        lemma = lemmas[index]
         # initialize lemma-level variables
         proof_state = lemma.get("proof_state")
         proof = lemma.get("proof")
@@ -47,13 +53,20 @@ def process_thy(thy):
 
             # new_state = replacer.replace_loc_vars(state)
             # new_step = replacer.replace_loc_vars(step)
-
-            processed.append({
-                "state" : new_state,
-                "step" : new_step,
-                "original_state" : state,
-                "original_step" : step
-            })
+            if (index % 3 == 1):       
+                processed_val.append({
+                    "state" : new_state,
+                    "step" : new_step,
+                    "original_state" : state,
+                    "original_step" : step
+                })
+            else:
+                processed_train.append({
+                    "state" : new_state,
+                    "step" : new_step,
+                    "original_state" : state,
+                    "original_step" : step
+                })
 
         # # initialize proof state and step arrays for this lemma.
         # # each state is an array.  string elems of the array are

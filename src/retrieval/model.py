@@ -12,7 +12,7 @@ import torch.nn.functional as F
 from typing import List, Dict, Any, Tuple, Union
 from transformers import AutoModelForTextEncoding, AutoTokenizer
 
-from common import (
+from src.common import (
     Premise,
     Context,
     Corpus,
@@ -26,7 +26,7 @@ from common import (
 torch.set_float32_matmul_precision("medium")
 
 
-class PremiseRetriever(pl.LightningModule):
+class TacticRetriever(pl.LightningModule):
     def __init__(
         self,
         model_name: str,
@@ -46,14 +46,14 @@ class PremiseRetriever(pl.LightningModule):
         self.embeddings_staled = True
 
     @classmethod
-    def load(cls, ckpt_path: str, device, freeze: bool) -> "PremiseRetriever":
+    def load(cls, ckpt_path: str, device, freeze: bool) -> "TacticRetriever":
         return load_checkpoint(cls, ckpt_path, device, freeze)
 
     @classmethod
     def load_hf(
         cls, ckpt_path: str, max_seq_len: int, device: int, dtype=None
-    ) -> "PremiseRetriever":
-        model = PremiseRetriever(ckpt_path, 0.0, 0, max_seq_len, 100).to(device).eval()
+    ) -> "TacticRetriever":
+        model = TacticRetriever(ckpt_path, 0.0, 0, max_seq_len, 100).to(device).eval()
         if dtype is not None:
             return model.to(dtype)
         elif (

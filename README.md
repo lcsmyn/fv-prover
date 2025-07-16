@@ -104,3 +104,5 @@ When the installation is complete, run the server at PISA root path to prove in 
 ```bash=
 sbt "runMain pisa.server.PisaOneStageServer8000"    # 8000 is the port exposed to the client
 ```
+
+running stuff in python: add PYTHONPATH

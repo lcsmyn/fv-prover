@@ -51,6 +51,7 @@ class ThyIdReplacer():
             self.add_terms(subgoal)
 
     # Check if this works for proof state as well
+    # fix this, it keeps subbing the 
     def replace(self, string):
         return_string = str(string)
 
