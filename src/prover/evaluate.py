@@ -1,4 +1,5 @@
 """Script for evaluating the prover on theorems extracted by LeanDojo.
+    NOT USED
 """
 import os
 import uuid

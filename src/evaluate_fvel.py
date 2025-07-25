@@ -4,14 +4,17 @@ import json
 import os
 import re
 import sys
+import pickle
+import uuid
 from pathlib import Path
 from typing import List, Optional, Tuple
 
 from loguru import logger
 
-from pisa.src.main.python.pisa_client import Theorem
+from PISA_FVEL.src.main.python.pisa_client import Theorem
 from prover.proof_search_fvel import CheatingProver
 from prover.proof_search import DistributedProver, GPT4TacticGenerator
+from prover.search_tree import Status
 
 
 def set_logger(verbose: bool) -> None:
@@ -169,7 +172,7 @@ def evaluate(
             debug=verbose,
         )
         results = prover.search_unordered(repo, theorems)
-    elif:
+    elif method == "cheat":
         database = {}
         for root, _, files in os.walk(data_path):
             for file in files:

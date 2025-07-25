@@ -29,11 +29,11 @@ def process_thy(thy):
     # imported terms, concatenate processed lemmas to re-form original,
     # add processed state-step pairs to processed
     if lemmas is None:
-        pass
+        return [], []
 
     #print("lemmas: ", len(lemmas))
     #total = 0
-    for index in len(lemmas):
+    for index in range(1, len(lemmas)):
         lemma = lemmas[index]
         # initialize lemma-level variables
         proof_state = lemma.get("proof_state")
@@ -118,38 +118,41 @@ def process_thy(thy):
     #print("This total: ", total)
     gc.collect()
 
-    return processed
+    return processed_train, processed_val
     
 def process_dataset(begin, end):
     with open('sel4_thy_info.json', 'r') as f:
         original_dataset = json.load(f)
 
-
-
-    processed_dataset = []
+    train_dataset = []
+    val_dataset = []
 
     #for name, theory in original_dataset.items():
     index = 0
     for theory in tqdm(original_dataset.items()):    
         if (index >= begin and index < end):
-            theory_states_steps = process_thy(theory)
-            for pair in theory_states_steps:
-                processed_dataset.append(pair)
+            (thy_train, thy_val) = process_thy(theory)
+            train_dataset.extend(thy_train)
+            val_dataset.extend(thy_val)
 
             #print("Processed " + name)
         index += 1
     
-    return processed_dataset
+    return train_dataset, val_dataset
 
 if __name__ == '__main__':
     begin = int(sys.argv[1:][0])
     end = int(sys.argv[1:][1])
 
-    data = process_dataset(begin, end)
+    (train, val) = process_dataset(begin, end)
 
-    fname = 'dataset_rag_lemmas_['+str(begin)+', '+str(end)+').json'
-    with open(fname, 'w') as f:
-        f.write(json.dumps(data, indent=2))
+    train_name = 'train_rag_lemmas_['+str(begin)+', '+str(end)+').json'
+    with open(train_name, 'w') as f:
+        f.write(json.dumps(train, indent=2))
+
+    val_name = 'val_rag_lemmas_['+str(begin)+', '+str(end)+').json'
+    with open(val_name, 'w') as f:
+        f.write(json.dumps(val, indent=2))
     # if not os.path.isfile(fname):
     #     with open(fname, 'w') as f:
     #         f.write(json.dumps(data, indent=2))

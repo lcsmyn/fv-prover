@@ -9,7 +9,7 @@ a = torch.randn(matrix_size, matrix_size, device=device)
 b = torch.randn(matrix_size, matrix_size, device=device)
 
 # Warm-up runs
-for _ in range(1000):
+for _ in range(10):
     _ = torch.matmul(a, b)
 
 # Measure actual time

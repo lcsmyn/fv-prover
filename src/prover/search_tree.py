@@ -2,7 +2,7 @@
 """
 import math
 from enum import Enum
-from multilevel_isabelle.src.main.python.pisa_client import (
+from PISA_FVEL.src.main.python.pisa_client import (
     TacticState,
     IsabelleError,
     TimeoutError,

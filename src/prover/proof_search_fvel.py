@@ -6,7 +6,7 @@ from enum import Enum
 from dataclasses import dataclass
 from loguru import logger
 
-from pisa.src.main.python.pisa_client import (DojoCrashError, DojoHardTimeoutError,
+from PISA_FVEL.src.main.python.pisa_client import (DojoCrashError, DojoHardTimeoutError,
                                                              DojoInitError, TacticState, ProofFinished, IsabelleError, ProofGivenUp,
                                                              IsaDojo, Theorem)
 from prover.search_tree import InternalNode, Edge, ProofFinishedNode, ErrorNode

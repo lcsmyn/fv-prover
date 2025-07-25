@@ -5,3 +5,4 @@ __pycache__/
 src/rag_extraction/*.json
 src/rag_extraction/*.zip
 src/rag_extraction/sel4_extraction/
+*.json

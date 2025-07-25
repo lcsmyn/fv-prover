@@ -4,13 +4,13 @@ from sentence_transformers.evaluation import InformationRetrievalEvaluator
 import json
 from transformers import AutoTokenizer, AutoModel
 
-tokenizer = AutoTokenizer.from_pretrained("kaiyuy/leandojo-lean4-retriever-byt5-small") # check if this is the right one
-model = SentenceTransformer("kaiyuy/leandojo-lean4-retriever-byt5-small") # check if right
+tokenizer = AutoTokenizer.from_pretrained("sentence-transformers/all-MiniLM-L6-v2") # check if this is the right one
+model = SentenceTransformer("sentence-transformers/all-MiniLM-L6-v2") # check if right
 
 print("tokenizer and model created")
 
-with open("put json file here", "r") as f:
-    dataset = json.dump(f)
+with open("train_rag_lemmas_[0, 100).json", "r") as train:
+    train_dataset = json.load(train)
 
 def preprocess(step):
     query_state = tokenizer(
@@ -38,7 +38,7 @@ def preprocess(step):
 
 train_examples = []
 
-for step in dataset:
+for step in train_dataset:
     train_examples.extend(preprocess(step))
 
 print("data processed successfully")
@@ -59,7 +59,7 @@ steps = {}
 relevant_steps = {}
 
 n = 1
-for pair in f:
+for pair in train:
     states["state" + n] = pair.get("state")
     steps["step" + n] = pair.get("step")
     states["state" + n] = ["step" + n]
