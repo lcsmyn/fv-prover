@@ -172,7 +172,7 @@ def evaluate(
             debug=verbose,
         )
         results = prover.search_unordered(repo, theorems)
-    elif method == "cheat":
+    elif method == "cheating":
         database = {}
         for root, _, files in os.walk(data_path):
             for file in files:

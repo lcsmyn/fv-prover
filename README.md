@@ -106,3 +106,4 @@ sbt "runMain pisa.server.PisaOneStageServer8000"    # 8000 is the port exposed t
 ```
 
 running stuff in python: add PYTHONPATH
+Also add PISA_PATH

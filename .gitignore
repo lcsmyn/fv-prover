@@ -1,5 +1,6 @@
 data/
 output/
+demo
 __pycache__/
 .venv
 src/rag_extraction/*.json

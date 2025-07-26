@@ -9,7 +9,8 @@ from loguru import logger
 from PISA_FVEL.src.main.python.pisa_client import (DojoCrashError, DojoHardTimeoutError,
                                                              DojoInitError, TacticState, ProofFinished, IsabelleError, ProofGivenUp,
                                                              IsaDojo, Theorem)
-from prover.search_tree import InternalNode, Edge, ProofFinishedNode, ErrorNode
+from .search_tree import InternalNode, Edge, ProofFinishedNode, ErrorNode
+from ..retrieval_small.model import RetrievalAugmentedGenerator
 
 
 class Status(Enum):
@@ -34,16 +35,14 @@ class SearchResult:
     num_total_nodes: int
     num_searched_nodes: int
 
-class CheatingProver:
+class Prover:
     def __init__(
         self,
-        database: dict[str, str],
         timeout: int,
         debug: bool,
     ) -> None:
 
         self.timeout = timeout
-        self.database = database
         self.debug = debug
 
         self.num_expansions = 0
@@ -87,7 +86,7 @@ class CheatingProver:
                     self.priority_queue = [self.root]
 
                     try:
-                        self._cheating_search()
+                        self._search()
                     except DojoCrashError:
                         logger.warning(f"Dojo crashed when proving {thm}")
                         pass
@@ -121,7 +120,7 @@ class CheatingProver:
             logger.warning(ex)
             return None
         
-    def _cheating_search(self) -> None:
+    def _search(self) -> None:
         time_start = time.monotonic()
 
         while True:
@@ -189,15 +188,7 @@ class CheatingProver:
 
 
     def _generate_tactics(self, ts: str) -> list[tuple[str, float]]:
-        t0 = time.monotonic()
-
-        path = str(self.theorem.file_path)
-        suggestions = self.database[ts]
-
-        self.actor_time += time.monotonic() - t0
-
-        logger.debug(f"Tactic suggestions: {suggestions}")
-        return [(suggestions, 1)]
+        pass
 
     def _run_tactic(self,
                     node: InternalNode,
@@ -257,3 +248,36 @@ class CheatingProver:
             result_node.in_edges.append(edge)
 
         return edge
+    
+class RetrievalProver(Prover):
+    def __init__(
+        self,
+        tac_gen,
+        timeout: int,
+        debug: bool
+    ) -> None:
+        Prover.__init__(self, timeout, debug)
+        self.tac_gen = tac_gen
+
+    
+
+class CheatingProver(Prover):
+    def __init__(
+        self,
+        database: dict[str, str],
+        timeout: int,
+        debug: bool
+    ) -> None:
+        Prover.__init__(self, timeout, debug)
+        self.database = database
+    
+    def _generate_tactics(self, ts: str) -> list[tuple[str, float]]:
+        t0 = time.monotonic()
+
+        path = str(self.theorem.file_path)
+        suggestions = self.database[ts]
+
+        self.actor_time += time.monotonic() - t0
+
+        logger.debug(f"Tactic suggestions: {suggestions}")
+        return [(suggestions, 1)]

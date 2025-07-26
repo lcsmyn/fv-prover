@@ -1,17 +1,19 @@
 import os
 import re
 
-from dsp_utils import Checker
+from .dsp_utils import Checker
 
 def extract_fact(c_program_name: str, checker: Checker):
     func2fact =  checker.get_c_func_fact(c_program_name)
     return func2fact
 
 def main():
+    # quick workaround
+    os.environ['PISA_PATH'] = "/var/home/richard/SourceCode/fv-prover/PISA_FVEL"
 
     l4v_dir = os.environ.get("L4V_DIR", "")
     isa_home = os.environ.get("ISABELLE_HOME", "")
-    theory_file = "/home/xiaohlim/FVEL/data/Interactive.thy"
+    theory_file = "../../data/Interactive.thy"
     port = 8000
     checker = Checker(
         working_dir=f"AutoCorres;{l4v_dir}",
@@ -20,7 +22,7 @@ def main():
         port=port,
     )
 
-    top = "./data/normalized/code2inv"
+    top = "../../data/normalized/code2inv"
     for root, _, files in os.walk(top):
         for file in files:
             if file.endswith(".c"):
@@ -30,7 +32,7 @@ def main():
                 print(func2fact)
                 input()
 
-def normalize(c_file, output_dir="./data/normalized/"):
+def normalize(c_file, output_dir="../../data/normalized/"):
 
     # replace assertions and assumptions
     assertion = "void assert(int cond) { if (!(cond)) { ERROR : { reach_error(); abort(); } } }\n"

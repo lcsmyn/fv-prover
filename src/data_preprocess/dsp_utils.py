@@ -2,7 +2,7 @@ import time
 import os
 # import openai
 import sys
-from parse_c_function_names import func_name_extract
+from .parse_c_function_names import func_name_extract
 
 # class LMFunction(object):
 #     def __init__(self, engine='gpt-3.5-turbo', max_tokens=512):
@@ -56,10 +56,11 @@ class Checker(object):
     Finally, it replaces `sledgehammer` with a call to `normalhammer`.
     """
     def __init__(self, working_dir, isa_path, theory_file, port=9000):
+        # print(os.environ['PISA_PATH'])
         sys.path.append(os.environ['PISA_PATH'])
         # try:
-        from pisa_client import initialise_env
-        self.initialise_env = initialise_env
+        from PISA_FVEL.src.main.python.pisa_client import initialise_env
+        self.initialise_env = initialise_env()
         # except:
         #     print("Set $PISA_PATH to /yourpath/to/Portal-to-ISAbelle/src/main/python")
 

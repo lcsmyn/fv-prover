@@ -59,7 +59,7 @@ steps = {}
 relevant_steps = {}
 
 n = 1
-for pair in train:
+for pair in train_dataset:
     states["state" + n] = pair.get("state")
     steps["step" + n] = pair.get("step")
     states["state" + n] = ["step" + n]
