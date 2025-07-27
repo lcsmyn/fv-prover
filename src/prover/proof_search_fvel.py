@@ -249,17 +249,18 @@ class Prover:
 
         return edge
     
-class RetrievalProver(Prover):
+class RetrievalAugmentedProver(Prover):
     def __init__(
         self,
-        tac_gen,
+        tac_gen: RetrievalAugmentedGenerator,
         timeout: int,
         debug: bool
     ) -> None:
         Prover.__init__(self, timeout, debug)
         self.tac_gen = tac_gen
 
-    
+    def _generate_tactics(self, ts: str) -> list[tuple[str, float]]:
+        return self.tac_gen.generate_tacs(ts)
 
 class CheatingProver(Prover):
     def __init__(

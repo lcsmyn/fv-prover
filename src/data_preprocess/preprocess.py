@@ -13,16 +13,24 @@ def main():
 
     l4v_dir = os.environ.get("L4V_DIR", "")
     isa_home = os.environ.get("ISABELLE_HOME", "")
-    theory_file = "../../data/Interactive.thy"
+    theory_file = "data/Interactive.thy"
     port = 8000
     checker = Checker(
         working_dir=f"AutoCorres;{l4v_dir}",
-        isa_path=isa_home,
+        # Test
+        isa_path="/var/home/richard/.local/bin",
         theory_file=theory_file,
         port=port,
     )
 
-    top = "../../data/normalized/code2inv"
+    benchmark_path = "sv-benchmarks/c/array-cav19"
+    for root, _, files in os.walk(benchmark_path):
+        print(files)
+        for file in files:
+            if file.endswith(".c"):
+                normalize(benchmark_path + "/" + file)
+
+    top = "data/normalized/sv-comp"
     for root, _, files in os.walk(top):
         for file in files:
             if file.endswith(".c"):
@@ -32,7 +40,7 @@ def main():
                 print(func2fact)
                 input()
 
-def normalize(c_file, output_dir="../../data/normalized/"):
+def normalize(c_file, output_dir="data/normalized/sv-comp"):
 
     # replace assertions and assumptions
     assertion = "void assert(int cond) { if (!(cond)) { ERROR : { reach_error(); abort(); } } }\n"

@@ -1,9 +1,12 @@
 data/
 output/
-demo
+demo/
+faiss/
 __pycache__/
 .venv
 src/rag_extraction/*.json
 src/rag_extraction/*.zip
 src/rag_extraction/sel4_extraction/
 *.json
+*.pickle
+checkpoint*/

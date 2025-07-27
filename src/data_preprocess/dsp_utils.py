@@ -60,7 +60,7 @@ class Checker(object):
         sys.path.append(os.environ['PISA_PATH'])
         # try:
         from PISA_FVEL.src.main.python.pisa_client import initialise_env
-        self.initialise_env = initialise_env()
+        self.initialise_env = initialise_env
         # except:
         #     print("Set $PISA_PATH to /yourpath/to/Portal-to-ISAbelle/src/main/python")
 
