@@ -3,53 +3,74 @@ import faiss
 import pickle
 import numpy as np
 import torch
+import tqdm
 import gc
+import os
 
+from typing import Optional
 from torch.utils.data import DataLoader
 from sentence_transformers import InputExample, losses, SentenceTransformer, SentenceTransformerTrainer
 from sentence_transformers.evaluation import InformationRetrievalEvaluator
-from transformers import AutoTokenizer, AutoModelForCausalLM
+from transformers import AutoTokenizer, AutoModelForCausalLM, BitsAndBytesConfig
 
 class RetrievalAugmentedGenerator():
     def __init__(
             self,
-            train_dataset_path,
-            val_dataset_path,
+            device,
+            train_dataset_path=None,
+            val_dataset_path=None,
             indexed_steps_path=None,
-            tokenizer_ckpt="Qwen/Qwen3-8B",
-            embedding_model_ckpt="sentence-transformers/all-MiniLM-L6-v2",
-            generator_ckpt="Qwen/Qwen3-8B", # Let's see what happens
-            max_state_inp_length=128,
-            max_tacgen_inp_length = 256,
-            max_tacgen_oup_length=512,
+            tokenizer_ckpt="DeepSeek-Prover-V2-7B",
+            embedding_model_ckpt="Qwen3-Embedding-0.6B",
+            generator_ckpt="DeepSeek-Prover-V2-7B",
+            max_state_inp_length=1024,
+            max_tacgen_inp_length=1024,
+            max_new_tokens=32000,
             num_retrieved=10,
-            num_samples=5,
+            num_samples=1,
             warmup_steps=100,
             epochs=3
     ) -> None:
+        self.device = device
         self.train_dataset = json.load(open(train_dataset_path, "r"))
-        self.val_dataset = json.load(open(val_dataset_path, "r"))
+
+        if val_dataset_path:
+            self.val_dataset = json.load(open(val_dataset_path, "r"))
+        else:
+            self.val_dataset = None
 
         if indexed_steps_path:
             self.indexed_steps = pickle.load(open(indexed_steps_path, "rb"))
         else:
             self.indexed_steps = None
         
+        quantization_config = BitsAndBytesConfig(
+            load_in_8bit=True,
+            llm_int8_threshold=6.0,
+            llm_int8_has_fp16_weight=False
+        )
+     
         self.tokenizer = AutoTokenizer.from_pretrained(tokenizer_ckpt)
-        self.embedding_model = SentenceTransformer(embedding_model_ckpt).to('cuda')
-        self.generator = AutoModelForCausalLM.from_pretrained(generator_ckpt, torch_dtype=torch.float16).cuda()
+        self.embedding_model = SentenceTransformer(embedding_model_ckpt).to(self.device)
+        self.embedding_model_name = embedding_model_ckpt
+
+        if generator_ckpt:
+            self.generator = AutoModelForCausalLM.from_pretrained(generator_ckpt, quantization_config=quantization_config) 
+        else: # i.e. training embedding model, don't need generator
+            self.generator = None
+
         self.max_state_inp_length = max_state_inp_length
         self.max_tacgen_inp_length = max_tacgen_inp_length
-        self.max_tacgen_oup_length = max_tacgen_oup_length
+        self.max_new_tokens = max_new_tokens
         self.num_retrieved = num_retrieved
         self.num_samples = num_samples
         self.warmup_steps = warmup_steps
         self.epochs = epochs
-        self.train_examples = []
         print("models loaded successfully")
 
-    def preprocess_data(self):
-        for step in self.train_dataset:
+    def preprocess_data(self, data):
+        train_examples = []
+        for step in data:
             query_state = self.tokenizer(
                 step["state"],
                 truncation=True,
@@ -70,21 +91,26 @@ class RetrievalAugmentedGenerator():
             #     padding="max_length",
             #     max_length=self.max_state_inp_length)
             ex = [InputExample(texts=[query_state, helpful_step], label=0.9)]
-            self.train_examples.extend(ex)
+            train_examples.extend(ex)
 
         print("preprocessed successfully")
-    
+
+        return train_examples
+
     # Note: model.fit is deprecated
     def train_embedding(self):
-        train_dataloader = DataLoader(self.train_examples, shuffle=True, batch_size=32)
+        train_dataloader = DataLoader(self.preprocess_data(self.train_dataset), shuffle=True, batch_size=2)
         train_loss = losses.CosineSimilarityLoss(self.embedding_model)
+        torch.cuda.empty_cache()
         self.embedding_model.fit(
             train_objectives=[(train_dataloader, train_loss)],
             epochs=self.epochs,
-            warmup_steps=self.warmup_steps
+            warmup_steps=self.warmup_steps,
+            evaluator=None,
+            use_amp=True
         )
         print("fine-tuning finished")
-        self.embedding_model.save_pretrained("./checkpoint_embedding")
+        self.embedding_model.save_pretrained("./checkpoint_embedding_" + self.embedding_model_name)
 
     def evaluate_embedding(self):
         states = {}
@@ -109,7 +135,7 @@ class RetrievalAugmentedGenerator():
     def embed(self):
         self.indexed_steps = faiss.IndexFlatL2(384)
 
-        for i in range(len(self.train_dataset)):
+        for i in tqdm(range(len(self.train_dataset))):
             tensor = self.embedding_model.encode_document(self.train_dataset[i].get("step"))
             if i == 0:
                 embeddings = np.array([tensor])
@@ -117,7 +143,7 @@ class RetrievalAugmentedGenerator():
                 embeddings = np.concatenate((embeddings, [tensor]), axis=0)
 
         self.indexed_steps.add(embeddings)
-        with open('indexed_steps.pickle', 'wb') as f:
+        with open('indexed_steps_'+self.embedding_model_name+'.pickle', 'wb') as f:
             pickle.dump(self.indexed_steps, f)
 
         print(f"Vectors in index: {self.indexed_steps.ntotal}")
@@ -128,71 +154,136 @@ class RetrievalAugmentedGenerator():
         _, indices = self.indexed_steps.search(query_embedding.reshape(1, -1), k=self.num_retrieved)
         steps = []
         for index in indices.tolist()[0]:
-            print(index)
             steps.append(self.train_dataset[index].get("step"))
+        print(steps)
         return steps
     
     def format_state(self, proof_state, tacs):
-        instr1 = "You are an expert in Isabelle2022 formal software proofs.  Given the following proof state:\n"
+        instr1 = "Isabelle proof state:\n"
         # idea: maybe add all previous proof states as well.
-        instr2 = "\ngenerate a single proof step that makes progress in the proof.  Ensure that the step is logically sound \
-                  and free of redundant content.  Use appropriate tactics and lemmas as necessary.  Don't explain.  Here are some \
-                  useful proof step structures you can use (<|long_id|> represents some identifier, like a variable or function):\n"
-        new_state = ""
-        new_state += instr1
+        # instr2 = "\ngenerate a single proof step that makes progress in the proof.  Ensure that the step is logically sound \
+        #           and free of redundant content.  Use appropriate tactics and lemmas as necessary.  Don't explain.  Here are some \
+        #           useful proof step structures you can use (<|long_id|> represents some identifier, like a variable or function):\n"
+        instr2 = "Possible tactic structures (<|long_id|> is any identifier):\n"
+        instr3 = "Next tactic:"
+        new_state = instr1
         new_state += (proof_state + "\n")
         new_state += instr2
         for tac in tacs:
             new_state += (tac + "\n")
+        new_state += instr3
 
         return new_state
     
     def generate_tacs(self, proof_state):
+        # TODO: make sure to process the proof_state here
         retrieved_tacs = self.retrieve(proof_state)
 
-        tokenized_state = self.tokenizer(
-            self.format_state(proof_state, retrieved_tacs), max_length=self.max_tacgen_inp_length, truncation=True, return_tensors="pt"
+        # tokenized_state = self.tokenizer(
+        #     self.format_state(proof_state, retrieved_tacs), max_length=self.max_tacgen_inp_length, truncation=True, return_tensors="pt"
+        # )
+        # state_ids = tokenized_state.input_ids.to('cuda')
+        # state_mask = tokenized_state.attention_mask.to('cuda')
+        # # Generate tactic candidates using beam search.
+        # output = self.generator.generate(
+        #     input_ids=state_ids,
+        #     attention_mask=state_mask,
+        #     max_length=self.max_new_tokens,
+        #     num_beams=self.num_samples,
+        #     # length_penalty=self.length_penalty,
+        #     do_sample=False,
+        #     num_return_sequences=self.num_samples,
+        #     early_stopping=False,
+        #     output_scores=True,
+        #     return_dict_in_generate=True,
+        # )
+
+        # # Return the output.
+        # raw_output_text = self.tokenizer.batch_decode(
+        #     output.sequences, skip_special_tokens=True
+        # )
+        # raw_scores = output.sequences_scores.tolist()
+
+        # output_text = []
+        # output_score = []
+
+        # for j in range(self.num_samples):
+        #     t = raw_output_text[j]
+        #     if t not in output_text:
+        #         output_text.append(t)
+        #         output_score.append(raw_scores[j])
+
+        # return list(zip(output_text, output_score))
+    
+        messages = [{"role": "user", "content": self.format_state(proof_state, retrieved_tacs)}]
+
+        formatted_prompt = tacgen.tokenizer.apply_chat_template(
+            messages, tokenize=False, add_generation_prompt=True
         )
-        state_ids = tokenized_state.input_ids.to('cuda')
-        state_mask = tokenized_state.attention_mask.to('cuda')
+
+        print(formatted_prompt)
+
+        tokenized_state = tacgen.tokenizer(
+            formatted_prompt,
+            max_length=tacgen.max_tacgen_inp_length, 
+            truncation=True, 
+            return_tensors="pt"
+        )
+        state_ids = tokenized_state.input_ids.to(self.device)
+        input_length = state_ids.shape[1]
+
+        state_mask = tokenized_state.attention_mask.to(self.device)
         # Generate tactic candidates using beam search.
-        output = self.generator.generate(
+        output = tacgen.generator.generate(
             input_ids=state_ids,
             attention_mask=state_mask,
-            max_length=self.max_tacgen_oup_length,
-            num_beams=self.num_samples,
+            max_new_tokens=self.max_new_tokens,
+            num_beams=5, #tacgen.num_samples,
             # length_penalty=self.length_penalty,
-            do_sample=False,
-            num_return_sequences=self.num_samples,
+            do_sample=True,
+            temperature=0.7,
+            top_p=0.95,
+            top_k=20,
+            repetition_penalty=1.2,
+            num_return_sequences=tacgen.num_samples,
             early_stopping=False,
             output_scores=True,
             return_dict_in_generate=True,
         )
 
+        generated_sequences = output.sequences[:, input_length:]
+
         # Return the output.
-        raw_output_text = self.tokenizer.batch_decode(
-            output.sequences, skip_special_tokens=True
+        raw_output_text = tacgen.tokenizer.batch_decode(
+            generated_sequences, skip_special_tokens=True
         )
         raw_scores = output.sequences_scores.tolist()
 
         output_text = []
         output_score = []
 
-        for j in range(self.num_samples):
+        for j in range(tacgen.num_samples):
             t = raw_output_text[j]
             if t not in output_text:
                 output_text.append(t)
                 output_score.append(raw_scores[j])
 
-        return list(zip(output_text, output_score))
+        print(list(zip(output_text, output_score)))
     
 if __name__ == "__main__":
     print(f"PyTorch sees: {torch.cuda.memory_allocated()/1e9:.2f}GB allocated")
     print(f"PyTorch cache: {torch.cuda.memory_reserved()/1e9:.2f}GB reserved")
 
+    os.environ['PYTORCH_CUDA_ALLOC_CONF'] = 'expandable_segments:True'
+    print(os.environ['PYTORCH_CUDA_ALLOC_CONF'])
+    # Training script for the embedding model.
+
     tacgen = RetrievalAugmentedGenerator(
+        device="cuda",
         train_dataset_path="src/retrieval_small/train_rag_lemmas_[0, 100).json",
-        val_dataset_path="src/retrieval_small/val_rag_lemmas_[0, 100).json",
-        embedding_model_ckpt="checkpoint_embedding",
-        indexed_steps_path="indexed_steps.pickle"
+        indexed_steps_path="indexed_steps.pickle",
+        tokenizer_ckpt="Qwen/Qwen3-8B",
+        embedding_model_ckpt="sentence-transformers/all-MiniLM-L6-v2",
+        generator_ckpt="Qwen/Qwen3-8B"
     )
+    tacgen.generate_tacs("proof (state)\ngoal (2 subgoals):\n 1. 2 ^ k * n < ?y\n 2. ?y \\<le> 2 ^ m")

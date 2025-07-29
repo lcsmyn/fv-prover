@@ -12,8 +12,8 @@ from typing import List, Optional, Tuple
 from loguru import logger
 
 from PISA_FVEL.src.main.python.pisa_client import Theorem
-from prover.proof_search_fvel import CheatingProver
-from prover.proof_search import DistributedProver, GPT4TacticGenerator
+from prover.proof_search_fvel import CheatingProver, DistributedProver
+# from prover.proof_search import DistributedProver, GPT4TacticGenerator
 from prover.search_tree import Status
 
 

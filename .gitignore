@@ -10,3 +10,5 @@ src/rag_extraction/sel4_extraction/
 *.json
 *.pickle
 checkpoint*/
+DeepSeek-Prover-V2-7B/
+Qwen3-Embedding-0.6B/

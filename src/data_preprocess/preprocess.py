@@ -13,12 +13,12 @@ def main():
 
     l4v_dir = os.environ.get("L4V_DIR", "")
     isa_home = os.environ.get("ISABELLE_HOME", "")
-    theory_file = "data/Interactive.thy"
+    theory_file = f"data/Interactive.thy"
     port = 8000
     checker = Checker(
         working_dir=f"AutoCorres;{l4v_dir}",
         # Test
-        isa_path="/var/home/richard/.local/bin",
+        isa_path=isa_home,
         theory_file=theory_file,
         port=port,
     )

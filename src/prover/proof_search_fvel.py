@@ -2,9 +2,14 @@ from math import exp
 import sys
 import time
 import heapq
+import ray
+import torch
+
+from typing import Optional, List
 from enum import Enum
 from dataclasses import dataclass
 from loguru import logger
+from ray.util.actor_pool import ActorPool
 
 from PISA_FVEL.src.main.python.pisa_client import (DojoCrashError, DojoHardTimeoutError,
                                                              DojoInitError, TacticState, ProofFinished, IsabelleError, ProofGivenUp,
@@ -185,8 +190,6 @@ class Prover:
         search_node.out_edges = results
         self.num_expansions += 1
 
-
-
     def _generate_tactics(self, ts: str) -> list[tuple[str, float]]:
         pass
 
@@ -282,3 +285,139 @@ class CheatingProver(Prover):
 
         logger.debug(f"Tactic suggestions: {suggestions}")
         return [(suggestions, 1)]
+    
+@ray.remote
+class CpuProver(RetrievalAugmentedProver):
+    """Ray actor for running an instance of `RetrievalAugmentedProver` on a CPU."""
+
+    def __init__(
+        self,
+        ckpt_path: str,
+        corpus_path: str,
+        timeout: int,
+        debug: bool,
+    ) -> None:
+        tac_gen = RetrievalAugmentedGenerator(
+            device=torch.device("cuda"), 
+            tokenizer_ckpt=ckpt_path,
+            generator_ckpt=ckpt_path,
+            indexed_steps_path=corpus_path
+        )
+        super().__init__(
+            tac_gen,
+            timeout,
+            debug,
+        )
+
+@ray.remote(num_gpus=1)
+class GpuProver(RetrievalAugmentedProver):
+    """Ray actor for running an instance of `RetrievalAugmentedProver` on a GPU."""
+
+    def __init__(
+        self,
+        ckpt_path: str,
+        corpus_path: str,
+        timeout: int,
+        debug: bool,
+    ) -> None:
+        tac_gen = RetrievalAugmentedGenerator(
+            device=torch.device("cuda"), 
+            tokenizer_ckpt=ckpt_path,
+            generator_ckpt=ckpt_path,
+            indexed_steps_path=corpus_path
+        )
+        super().__init__(
+            tac_gen,
+            timeout,
+            debug,
+        )
+
+class DistributedProver:
+    """A distributed prover that uses Ray to parallelize the proof search.
+
+    It is a wrapper around `CpuProver` and `GpuProver` that handles the different
+    devices and different number of concurrent provers.
+    """
+
+    def __init__(
+        self,
+        ckpt_path: str,
+        corpus_path: Optional[str],
+        num_cpus: int,
+        with_gpus: bool,
+        timeout: int,
+        debug: Optional[bool] = False,
+    ) -> None:
+        # if ckpt_path is None:
+        #     assert tactic and not indexed_corpus_path
+        # else:
+        #     assert not tactic and not module
+        self.distributed = num_cpus > 1
+
+        if not self.distributed:
+            # if ckpt_path is None:
+            #     tac_gen = FixedTacticGenerator(tactic, module)
+            # else:
+            device = torch.device("cuda") if with_gpus else torch.device("cpu")
+            tac_gen = RetrievalAugmentedGenerator(
+                device=device, 
+                tokenizer_ckpt=ckpt_path,
+                generator_ckpt=ckpt_path,
+                indexed_steps_path=corpus_path
+            )
+            # if tac_gen.retriever is not None:
+            #     assert indexed_corpus_path is not None
+            #     tac_gen.retriever.load_corpus(indexed_corpus_path)
+            self.prover = RetrievalAugmentedProver(
+                tac_gen, timeout, debug
+            )
+            return
+
+        ray.init()
+        if with_gpus:
+            logger.info(f"Launching {num_cpus} GPU workers.")
+            provers = [
+                GpuProver.remote(
+                    ckpt_path,
+                    corpus_path,
+                    timeout=timeout,
+                    debug=debug,
+                )
+                for _ in range(num_cpus)
+            ]
+        else:
+            logger.info(f"Launching {num_cpus} CPU workers.")
+            provers = [
+                CpuProver.remote(
+                    ckpt_path,
+                    corpus_path,
+                    timeout=timeout,
+                    debug=debug,
+                )
+                for _ in range(num_cpus)
+            ]
+
+        self.prover_pool = ActorPool(provers)
+
+    def search_unordered(
+        self, repo, theorems: List[Theorem]
+    ) -> List[SearchResult]:
+        """Parallel proof search for `theorems`. The order of the results is not guaranteed to match the order of the input."""
+        if not self.distributed:
+            return [
+                self.prover.search(repo, thm)
+                for thm in theorems
+            ]
+
+        try:
+            results = list(
+                self.prover_pool.map_unordered(
+                    lambda p, x: p.search.remote(repo, x),
+                    theorems
+                )
+            )
+        except ray.exceptions.RayActorError as ex:
+            logger.error(ex)
+            sys.exit(1)
+
+        return results
