@@ -1,9 +1,10 @@
-# FVEL
-Code for implement of paper: [FVEL: Interactive Formal Verification Environment with Large Language Models via Theorem Proving](https://arxiv.org/abs/2406.14408).
+# FV-Prover
+
+This is the code for Lucas Yuan's 2025 Non-Trivial Fellowship Project.  Note: the following setup and evaluation process will likely not work -- I finished this code a very short time before the deadline, so I had little time to clean up the repository and properly document.  Most of the files here are copied from other repositories (LeanDojo and FVEL) and are in various stages of completion.  The relevant files for the evaluation are src/retrieval_small/model.py, post.py, and isaCheck.py
 
 ## setup
 
-Here is the setup process for FVEL framework. (Tested on Ubuntu-20.04 and Debian.)
+Here is the setup process, tested for Ubuntu 22.04.
 
 ### 1. Install Isabelle2022.
 
@@ -79,31 +80,20 @@ It's expected to output:
 All tests passed.
 ```
 
-### 5. Install Portal-to-ISAbelle.
-We maintain a l4v-compatible [Portal-to-ISAbelle](https://github.com/albertqjiang/Portal-to-ISAbelle) repo in [PISA_FVEL](https://github.com/FVELER/PISA_FVEL). Run the following commands to install PISA_FVEL:
+### 5. Unzip the FVELER dataset
 
-```bash=
-git clone https://github.com/FVELER/PISA_FVEL.git
+I used the FVELER dataset in src/rag_extraction (this module of the project did not make it into the final evaluation).  If you want to recreate the datasets I made, simply unzip [FVELER](https://github.com/FVELER/FVELerExtraction/blob/main/FVELer.zip) to src/rag_extraction. 
 
-# install sdkman
-curl -s "https://get.sdkman.io" | bash
-source ~/.bashrc
-# to make sure sdk is properly installed:
-sdk help
+## Evaluation
 
-# install java and sbt
-sdk install java 11.0.11-open
-sdk install sbt
+Go to fv-prover root and run
 
-cd PISA_FVEL
-sbt compile
+```
+python3 -m src.retrieval_small.model
+python3 -m post
+python3 -m isaCheck
 ```
 
-When the installation is complete, run the server at PISA root path to prove in one pass:
+to get the result of the evaluation in a large log file in fv-prover root.
 
-```bash=
-sbt "runMain pisa.server.PisaOneStageServer8000"    # 8000 is the port exposed to the client
-```
-
-running stuff in python: add PYTHONPATH
-Also add PISA_PATH
+Due to time constraints, I simply used grep to search for log messages that showed a pass or fail in Isabelle theory compilation.  I piped these messages to a new file and I counted how many of them passed to see the success rate of the LLM.

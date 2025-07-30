@@ -15,6 +15,4 @@ Qwen3-Embedding-0.6B/
 l4v-FVEL/
 env
 PISA_FVEL/
-*.full
-sv.*
 *.log

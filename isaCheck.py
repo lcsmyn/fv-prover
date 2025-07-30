@@ -19,9 +19,11 @@ if __name__ == "__main__":
     isabelle.logger.setLevel(logging.INFO)
     isabelle.logger.addHandler(logging.FileHandler("session.log"))
     
+    list_file_path = "thy.full"
+
     try:
         # Read the main file list, filtering out blank lines
-        with open("thy.full", 'r') as file:
+        with open(list_file_path, 'r') as file:
             file_paths = [line.strip() for line in file if line.strip()]
 
     except FileNotFoundError:

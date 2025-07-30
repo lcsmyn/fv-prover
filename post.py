@@ -396,9 +396,11 @@ def extract_proof_from_file(file_path):
 
 if __name__ == "__main__":
 
+    list_file_path = "post.full"
+    
     try:
         # Read the main file list, filtering out blank lines
-        with open("post.full", 'r') as file:
+        with open(list_file_path, 'r') as file:
             file_paths = [line.strip() for line in file if line.strip()]
 
     except FileNotFoundError:

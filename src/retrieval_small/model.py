@@ -338,10 +338,11 @@ if __name__ == "__main__":
 
     # print(tacgen.generate_1pass("test-0019-1.thy", "test-0019-1.c"))
     # print(tacgen.generate_1pass("jain_2-1.thy", "jain_2-1.c"))
+    list_file_path = "sv.274+"
 
     try:
         # Read the main file list, filtering out blank lines
-        with open("sv.274+", 'r') as file:
+        with open(list_file_path, 'r') as file:
             file_paths = [line.strip() for line in file if line.strip()]
 
     except FileNotFoundError:
