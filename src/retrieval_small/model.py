@@ -184,27 +184,47 @@ class RetrievalAugmentedGenerator():
 
         return new_state
     
-    def format_1pass(self, isa_file_path, c_file_path):
-        with open(isa_file_path, "r") as f:
-            isa_file = f.read()
-        with open(c_file_path, "r") as f:
+    def format_1pass(self, path):
+        with open(path, "r") as f:
             c_file = f.read()
 
-        instr1 = f"Here is a program in C called {c_file_path}:\n"
+        # Here's the multi-line template using a triple-quoted f-string
+        isa_file = f"""
+theory {os.path.basename(path)[:-2]} imports "AutoCorres.AutoCorres" begin
+
+external_file "{path}"
+install_C_file "{path}"
+autocorres "{path}"
+
+context {os.path.basename(path)[:-2]} begin
+thm main'_def
+
+theorem main_safety:
+"""
+        raw = r"""  "\<turnstile> {\<lambda>s. True} main' {\<lambda>ret s. True}"
+
+"""
+        instr1 = f"Here is a program in C called {path}:\n"
         instr2 = "Here is a theory file in Isabelle about this program:\n"
         instr3 = "The theorem in the Isabelle file aims to prove that the C program terminates.  If the program does not terminate, output the single word 'False'.\
-                  If it does terminate, write the proof for the theorem.  Ensure that the proof is complete, logically sound and free of redundant content. \
+                  If it does terminate, write the proof for the theorem in Isabelle. Ensure that the proof is complete, logically sound and free of redundant content. \
                   Use appropriate tactics and lemmas as necessary. Don’t explain."
-        return (instr1 + c_file + instr2 + isa_file + instr3)
+        return (instr1 + c_file + instr2 + isa_file + raw + instr3)
 
-    def generate_1pass(self, isa_file_path, c_file_path):
-        prompt = self.format_1pass(isa_file_path, c_file_path)
+    def generate_1pass(self, c_file_path):
+        prompt = self.format_1pass(c_file_path)
         messages = [{"role": "user", "content": prompt}]
         formatted_prompt = tacgen.tokenizer.apply_chat_template(
             messages, tokenize=False, add_generation_prompt=True
         )
 
-        print(formatted_prompt)
+        directory = os.path.dirname(c_file_path)
+        basename_with_ext = os.path.basename(c_file_path)
+        basename_without_ext = os.path.splitext(basename_with_ext)[0]
+        log_file_name = f"{basename_without_ext}.prm"
+        log_file_path = os.path.join(directory, log_file_name)
+        with open(log_file_path, 'w') as log_file:
+            print(formatted_prompt, file=log_file)
 
         tokenized_state = tacgen.tokenizer(
             formatted_prompt,
@@ -242,42 +262,6 @@ class RetrievalAugmentedGenerator():
     def generate_tacs(self, proof_state):
         # TODO: make sure to process the proof_state here
         retrieved_tacs = self.retrieve(proof_state)
-
-        # tokenized_state = self.tokenizer(
-        #     self.format_state(proof_state, retrieved_tacs), max_length=self.max_tacgen_inp_length, truncation=True, return_tensors="pt"
-        # )
-        # state_ids = tokenized_state.input_ids.to('cuda')
-        # state_mask = tokenized_state.attention_mask.to('cuda')
-        # # Generate tactic candidates using beam search.
-        # output = self.generator.generate(
-        #     input_ids=state_ids,
-        #     attention_mask=state_mask,
-        #     max_length=self.max_new_tokens,
-        #     num_beams=self.num_samples,
-        #     # length_penalty=self.length_penalty,
-        #     do_sample=False,
-        #     num_return_sequences=self.num_samples,
-        #     early_stopping=False,
-        #     output_scores=True,
-        #     return_dict_in_generate=True,
-        # )
-
-        # # Return the output.
-        # raw_output_text = self.tokenizer.batch_decode(
-        #     output.sequences, skip_special_tokens=True
-        # )
-        # raw_scores = output.sequences_scores.tolist()
-
-        # output_text = []
-        # output_score = []
-
-        # for j in range(self.num_samples):
-        #     t = raw_output_text[j]
-        #     if t not in output_text:
-        #         output_text.append(t)
-        #         output_score.append(raw_scores[j])
-
-        # return list(zip(output_text, output_score))
     
         messages = [{"role": "user", "content": self.format_state(proof_state, retrieved_tacs)}]
 
@@ -334,9 +318,13 @@ class RetrievalAugmentedGenerator():
 
         print(list(zip(output_text, output_score)))
     
+from datetime import datetime
 if __name__ == "__main__":
     print(f"PyTorch sees: {torch.cuda.memory_allocated()/1e9:.2f}GB allocated")
     print(f"PyTorch cache: {torch.cuda.memory_reserved()/1e9:.2f}GB reserved")
+
+    torch.cuda.empty_cache()
+    gc.collect()
 
     os.environ['PYTORCH_CUDA_ALLOC_CONF'] = 'expandable_segments:True'
     print(os.environ['PYTORCH_CUDA_ALLOC_CONF'])
@@ -347,4 +335,43 @@ if __name__ == "__main__":
         tokenizer_ckpt="Qwen/Qwen3-8B",
         generator_ckpt="Qwen/Qwen3-8B"
     )
-    print(tacgen.generate_1pass("jain_2-1.thy", "jain_2-1.c"))
+
+    # print(tacgen.generate_1pass("test-0019-1.thy", "test-0019-1.c"))
+    # print(tacgen.generate_1pass("jain_2-1.thy", "jain_2-1.c"))
+
+    try:
+        # Read the main file list, filtering out blank lines
+        with open("sv.274+", 'r') as file:
+            file_paths = [line.strip() for line in file if line.strip()]
+
+    except FileNotFoundError:
+        print(f"Error: The list file '{list_file_path}' was not found.")
+        exit
+    except Exception as e:
+        print(f"An error occurred while reading the list file: {e}")
+        exit
+
+    print("--- Starting to Process Files from List ---")
+
+    # Iterate through each file path in the list
+    for path in file_paths:
+        try:
+            if os.path.exists(path):
+                print(f" -- {datetime.now().time()} === [ {path} ] -- ")
+                directory = os.path.dirname(path)
+                basename_with_ext = os.path.basename(path)
+                basename_without_ext = os.path.splitext(basename_with_ext)[0]
+
+                # Construct the new log file path
+                # os.path.join handles correct path separators for different OS
+                log_file_name = f"{basename_without_ext}.answer"
+                log_file_path = os.path.join(directory, log_file_name)
+                with open(log_file_path, 'w') as log_file:
+                    print(tacgen.generate_1pass(path), file=log_file)
+            else:
+                print(f"\n[WARNING] File not found: '{path}'. Skipping this entry.")
+
+        except Exception as e:
+            print(f"\n[ERROR] An error occurred while reading '{path}': {e}")
+
+    print("\n--- Finished Processing All Files ---")

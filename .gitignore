@@ -12,3 +12,9 @@ src/rag_extraction/sel4_extraction/
 checkpoint*/
 DeepSeek-Prover-V2-7B/
 Qwen3-Embedding-0.6B/
+l4v-FVEL/
+env
+PISA_FVEL/
+*.full
+sv.*
+*.log
