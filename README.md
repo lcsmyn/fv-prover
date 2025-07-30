@@ -82,7 +82,11 @@ All tests passed.
 
 ### 5. Unzip the FVELER dataset
 
-I used the FVELER dataset in src/rag_extraction (this module of the project did not make it into the final evaluation).  If you want to recreate the datasets I made, simply unzip [FVELER](https://github.com/FVELER/FVELerExtraction/blob/main/FVELer.zip) to src/rag_extraction. 
+I used the FVELER dataset in src/rag_extraction (this module of the project did not make it into the final evaluation).  If you want to recreate the datasets I made, simply unzip [FVELER](https://github.com/FVELER/FVELerExtraction/blob/main/FVELer.zip) to src/rag_extraction.  Then run
+```
+python3 -m src.rag_extraction.gen_dataset <begin> <end>
+```
+to choose how many theories you want to process.  begin = 0 and end = 100 usually works well.  Processing the entire FVELER dataset takes a very long time, though. 
 
 ## Evaluation
 
