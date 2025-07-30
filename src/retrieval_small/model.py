@@ -32,7 +32,11 @@ class RetrievalAugmentedGenerator():
             epochs=3
     ) -> None:
         self.device = device
-        self.train_dataset = json.load(open(train_dataset_path, "r"))
+
+        if train_dataset_path:
+            self.train_dataset = json.load(open(train_dataset_path, "r"))
+        else:
+            self.train_dataset = None
 
         if val_dataset_path:
             self.val_dataset = json.load(open(val_dataset_path, "r"))
@@ -51,8 +55,13 @@ class RetrievalAugmentedGenerator():
         )
      
         self.tokenizer = AutoTokenizer.from_pretrained(tokenizer_ckpt)
-        self.embedding_model = SentenceTransformer(embedding_model_ckpt).to(self.device)
-        self.embedding_model_name = embedding_model_ckpt
+
+        if embedding_model_ckpt:
+            self.embedding_model = SentenceTransformer(embedding_model_ckpt).to(self.device)
+            self.embedding_model_name = embedding_model_ckpt
+        else:
+            self.embedding_model = None
+            self.embedding_model_name = None
 
         if generator_ckpt:
             self.generator = AutoModelForCausalLM.from_pretrained(generator_ckpt, quantization_config=quantization_config) 
@@ -175,6 +184,61 @@ class RetrievalAugmentedGenerator():
 
         return new_state
     
+    def format_1pass(self, isa_file_path, c_file_path):
+        with open(isa_file_path, "r") as f:
+            isa_file = f.read()
+        with open(c_file_path, "r") as f:
+            c_file = f.read()
+
+        instr1 = f"Here is a program in C called {c_file_path}:\n"
+        instr2 = "Here is a theory file in Isabelle about this program:\n"
+        instr3 = "The theorem in the Isabelle file aims to prove that the C program terminates.  If the program does not terminate, output the single word 'False'.\
+                  If it does terminate, write the proof for the theorem.  Ensure that the proof is complete, logically sound and free of redundant content. \
+                  Use appropriate tactics and lemmas as necessary. Don’t explain."
+        return (instr1 + c_file + instr2 + isa_file + instr3)
+
+    def generate_1pass(self, isa_file_path, c_file_path):
+        prompt = self.format_1pass(isa_file_path, c_file_path)
+        messages = [{"role": "user", "content": prompt}]
+        formatted_prompt = tacgen.tokenizer.apply_chat_template(
+            messages, tokenize=False, add_generation_prompt=True
+        )
+
+        print(formatted_prompt)
+
+        tokenized_state = tacgen.tokenizer(
+            formatted_prompt,
+            max_length=tacgen.max_tacgen_inp_length, 
+            truncation=True, 
+            return_tensors="pt"
+        )
+        prompt_ids = tokenized_state.input_ids.to(self.device)
+        input_length = prompt_ids.shape[1]
+
+        prompt_mask = tokenized_state.attention_mask.to(self.device)
+        # Generate tactic candidates using beam search.
+        output = tacgen.generator.generate(
+            input_ids=prompt_ids,
+            attention_mask=prompt_mask,
+            max_new_tokens=self.max_new_tokens,
+            do_sample=True,
+            temperature=0.7,
+            top_p=0.95,
+            top_k=20,
+            repetition_penalty=1.2,
+            early_stopping=False,
+            output_scores=True,
+            return_dict_in_generate=True,
+        )
+
+        generated_sequences = output.sequences[0][input_length:]
+
+        # Return the output.
+        raw_output_text = tacgen.tokenizer.decode(
+            generated_sequences, skip_special_tokens=True
+        )
+        return raw_output_text
+    
     def generate_tacs(self, proof_state):
         # TODO: make sure to process the proof_state here
         retrieved_tacs = self.retrieve(proof_state)
@@ -280,10 +344,7 @@ if __name__ == "__main__":
 
     tacgen = RetrievalAugmentedGenerator(
         device="cuda",
-        train_dataset_path="src/retrieval_small/train_rag_lemmas_[0, 100).json",
-        indexed_steps_path="indexed_steps.pickle",
         tokenizer_ckpt="Qwen/Qwen3-8B",
-        embedding_model_ckpt="sentence-transformers/all-MiniLM-L6-v2",
         generator_ckpt="Qwen/Qwen3-8B"
     )
-    tacgen.generate_tacs("proof (state)\ngoal (2 subgoals):\n 1. 2 ^ k * n < ?y\n 2. ?y \\<le> 2 ^ m")
+    print(tacgen.generate_1pass("jain_2-1.thy", "jain_2-1.c"))

@@ -13,32 +13,47 @@ def main():
 
     l4v_dir = os.environ.get("L4V_DIR", "")
     isa_home = os.environ.get("ISABELLE_HOME", "")
-    theory_file = f"data/Interactive.thy"
+    # theory_file = f"{l4v_dir}/tools/autocorres/tests/data/Interactive.thy"
+    # port = 8000
+    # checker = Checker(
+    #     working_dir=f"AutoCorres;{l4v_dir}",
+    #     # Test
+    #     isa_path="/var/home/richard/.local/bin",
+    #     theory_file=theory_file,
+    #     port=port,
+    # )
+
+    theory_file = f"{l4v_dir}/tools/autocorres/tests/proof-tests/array_indirect_update.thy"
     port = 8000
     checker = Checker(
         working_dir=f"AutoCorres;{l4v_dir}",
         # Test
-        isa_path=isa_home,
+        isa_path="/var/home/richard/.local/bin",
         theory_file=theory_file,
         port=port,
     )
 
-    benchmark_path = "sv-benchmarks/c/array-cav19"
-    for root, _, files in os.walk(benchmark_path):
-        print(files)
-        for file in files:
-            if file.endswith(".c"):
-                normalize(benchmark_path + "/" + file)
+    print("got here")
 
-    top = "data/normalized/sv-comp"
-    for root, _, files in os.walk(top):
-        for file in files:
-            if file.endswith(".c"):
-                full_path = os.path.join(root, file)
-                abs_path = os.path.abspath(full_path)
-                func2fact = extract_fact(abs_path, checker)
-                print(func2fact)
-                input()
+    print(checker.check('theorem list_app_assoc: "(xs @ ys) @ zs = xs @ (ys @ zs)"')) # Test
+    # benchmark_path = "sv-benchmarks/c/array-cav19"
+    # for root, _, files in os.walk(benchmark_path):
+    #     print(files)
+    #     for file in files:
+    #         if file.endswith(".c"):
+    #             normalize(benchmark_path + "/" + file)
+
+    # top = "l4v-FVEL/tools/autocorres/tests/data/normalized/sv-comp"
+    # for root, _, files in os.walk(top):
+    #     for file in files:
+    #         if file.endswith(".c"):
+    #             full_path = os.path.join(root, file)
+    #             abs_path = os.path.abspath(full_path)
+    #             func2fact = extract_fact(abs_path, checker)
+    #             print(func2fact)
+    #             input()
+
+    print("got here")
 
 def normalize(c_file, output_dir="data/normalized/sv-comp"):
 
